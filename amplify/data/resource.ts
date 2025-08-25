@@ -12,6 +12,21 @@ const schema = a.schema({
       content: a.string(),
     })
     .authorization((allow) => [allow.publicApiKey()]),
+  
+  File: a
+    .model({
+      name: a.string().required(),
+      key: a.string().required(),
+      size: a.integer().default(0),
+      type: a.string(),
+      owner: a.string(),
+      parentId: a.id(),
+      isFolder: a.boolean().default(false),
+    })
+    .authorization((allow) => [
+      allow.authenticated(),
+      allow.owner(),
+    ]),
 });
 
 export type Schema = ClientSchema<typeof schema>;
