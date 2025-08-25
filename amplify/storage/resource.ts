@@ -6,8 +6,23 @@ export const storage = defineStorage({
     'uploads/*': [
       allow.authenticated.to(['read', 'write', 'delete']),
     ],
-    'folders/*': [
+    'public/*': [
+      allow.guest.to(['read']),
       allow.authenticated.to(['read', 'write', 'delete']),
+    ],
+    'protected/{entity_id}/*': [
+      allow.authenticated.to(['read']),
+      allow.entity('identity').to(['write', 'delete']),
+    ],
+    'private/{entity_id}/*': [
+      allow.entity('identity').to(['read', 'write', 'delete']),
+    ],
+    'thumbnails/*': [
+      allow.authenticated.to(['read']),
+      allow.guest.to(['read']),
+    ],
+    'secure-rooms/{room_id}/*': [
+      allow.groups(['Admin', 'Premium']).to(['read', 'write', 'delete']),
     ],
   }),
 });

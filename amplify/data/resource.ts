@@ -1,32 +1,134 @@
 import { type ClientSchema, a, defineData } from "@aws-amplify/backend";
 
-/*== STEP 1 ===============================================================
-The section below creates a Todo database table with a "content" field. Try
-adding a new "isDone" field as a boolean. The authorization rule below
-specifies that any user authenticated via an API key can "create", "read",
-"update", and "delete" any "Todo" records.
-=========================================================================*/
 const schema = a.schema({
-  Todo: a
-    .model({
-      content: a.string(),
-    })
-    .authorization((allow) => [allow.publicApiKey()]),
-  
-  File: a
-    .model({
-      name: a.string().required(),
-      key: a.string().required(),
-      size: a.integer().default(0),
-      type: a.string(),
-      owner: a.string(),
-      parentId: a.id(),
-      isFolder: a.boolean().default(false),
-    })
-    .authorization((allow) => [
-      allow.authenticated(),
-      allow.owner(),
-    ]),
+  User: a.model({
+    id: a.id().required(),
+    email: a.email().required(),
+    name: a.string(),
+    avatar: a.url(),
+    tier: a.enum(['FREE', 'PREMIUM', 'BUSINESS', 'ENTERPRISE']),
+    storageUsed: a.integer().default(0),
+    storageQuota: a.integer().default(5368709120),
+    settings: a.json(),
+    createdAt: a.datetime(),
+    updatedAt: a.datetime(),
+    files: a.hasMany('File', 'ownerId'),
+    sharedFiles: a.hasMany('Share', 'ownerId'),
+    activities: a.hasMany('Activity', 'userId'),
+  })
+  .authorization((allow) => [
+    allow.owner(),
+    allow.groups(['Admin']),
+  ]),
+
+  File: a.model({
+    id: a.id().required(),
+    name: a.string().required(),
+    originalName: a.string(),
+    key: a.string().required(),
+    size: a.integer().default(0),
+    type: a.string(),
+    mimeType: a.string(),
+    parentId: a.id(),
+    ownerId: a.id().required(),
+    owner: a.belongsTo('User', 'ownerId'),
+    isFolder: a.boolean().default(false),
+    isStarred: a.boolean().default(false),
+    isArchived: a.boolean().default(false),
+    isEncrypted: a.boolean().default(false),
+    thumbnail: a.url(),
+    description: a.string(),
+    tags: a.string().array(),
+    metadata: a.json(),
+    shares: a.hasMany('Share', 'fileId'),
+    versions: a.hasMany('FileVersion', 'fileId'),
+    activities: a.hasMany('Activity', 'fileId'),
+    createdAt: a.datetime(),
+    updatedAt: a.datetime(),
+    deletedAt: a.datetime(),
+  })
+  .authorization((allow) => [
+    allow.owner(),
+    allow.groups(['Admin']),
+    allow.authenticated().to(['read']),
+  ])
+  .secondaryIndexes((index) => [
+    index('ownerId').sortKeys(['createdAt']).queryField('filesByOwner'),
+    index('parentId').sortKeys(['name']).queryField('filesByFolder'),
+  ]),
+
+  Share: a.model({
+    id: a.id().required(),
+    fileId: a.id().required(),
+    file: a.belongsTo('File', 'fileId'),
+    ownerId: a.id().required(),
+    owner: a.belongsTo('User', 'ownerId'),
+    sharedWithEmail: a.email(),
+    sharedWithUserId: a.id(),
+    permissions: a.enum(['VIEW', 'EDIT', 'DELETE']),
+    password: a.string(),
+    expiresAt: a.datetime(),
+    shareUrl: a.url(),
+    accessCount: a.integer().default(0),
+    lastAccessedAt: a.datetime(),
+    createdAt: a.datetime(),
+  })
+  .authorization((allow) => [
+    allow.owner(),
+    allow.authenticated().to(['read']),
+  ]),
+
+  Activity: a.model({
+    id: a.id().required(),
+    userId: a.id().required(),
+    user: a.belongsTo('User', 'userId'),
+    fileId: a.id(),
+    file: a.belongsTo('File', 'fileId'),
+    action: a.enum(['UPLOAD', 'DOWNLOAD', 'DELETE', 'SHARE', 'VIEW', 'EDIT', 'RESTORE']),
+    details: a.json(),
+    ipAddress: a.string(),
+    userAgent: a.string(),
+    createdAt: a.datetime(),
+  })
+  .authorization((allow) => [
+    allow.owner(),
+    allow.groups(['Admin']),
+  ]),
+
+  FileVersion: a.model({
+    id: a.id().required(),
+    fileId: a.id().required(),
+    file: a.belongsTo('File', 'fileId'),
+    versionNumber: a.integer().required(),
+    key: a.string().required(),
+    size: a.integer(),
+    uploadedBy: a.string(),
+    comment: a.string(),
+    createdAt: a.datetime(),
+  })
+  .authorization((allow) => [
+    allow.owner(),
+    allow.groups(['Admin']),
+  ]),
+
+  SecureRoom: a.model({
+    id: a.id().required(),
+    name: a.string().required(),
+    description: a.string(),
+    ownerId: a.id().required(),
+    watermarkEnabled: a.boolean().default(false),
+    downloadDisabled: a.boolean().default(false),
+    expiresAt: a.datetime(),
+    accessCode: a.string(),
+    members: a.string().array(),
+    files: a.string().array(),
+    createdAt: a.datetime(),
+    updatedAt: a.datetime(),
+  })
+  .authorization((allow) => [
+    allow.owner(),
+    allow.groups(['Admin', 'Premium']),
+  ]),
 });
 
 export type Schema = ClientSchema<typeof schema>;
@@ -34,39 +136,6 @@ export type Schema = ClientSchema<typeof schema>;
 export const data = defineData({
   schema,
   authorizationModes: {
-    defaultAuthorizationMode: "apiKey",
-    // API Key is used for a.allow.public() rules
-    apiKeyAuthorizationMode: {
-      expiresInDays: 30,
-    },
+    defaultAuthorizationMode: "userPool",
   },
 });
-
-/*== STEP 2 ===============================================================
-Go to your frontend source code. From your client-side code, generate a
-Data client to make CRUDL requests to your table. (THIS SNIPPET WILL ONLY
-WORK IN THE FRONTEND CODE FILE.)
-
-Using JavaScript or Next.js React Server Components, Middleware, Server 
-Actions or Pages Router? Review how to generate Data clients for those use
-cases: https://docs.amplify.aws/gen2/build-a-backend/data/connect-to-API/
-=========================================================================*/
-
-/*
-"use client"
-import { generateClient } from "aws-amplify/data";
-import type { Schema } from "@/amplify/data/resource";
-
-const client = generateClient<Schema>() // use this Data client for CRUDL requests
-*/
-
-/*== STEP 3 ===============================================================
-Fetch records from the database and use them in your frontend component.
-(THIS SNIPPET WILL ONLY WORK IN THE FRONTEND CODE FILE.)
-=========================================================================*/
-
-/* For example, in a React component, you can use this snippet in your
-  function's RETURN statement */
-// const { data: todos } = await client.models.Todo.list()
-
-// return <ul>{todos.map(todo => <li key={todo.id}>{todo.content}</li>)}</ul>
