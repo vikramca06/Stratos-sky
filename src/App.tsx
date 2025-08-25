@@ -14,7 +14,6 @@ import { FileProvider } from './contexts/FileContext';
 import { UploadQueueProvider } from './contexts/UploadQueueContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { authService } from './services/authService';
-import './App.css';
 
 function App() {
   const [user, setUser] = useState<any>(null);
